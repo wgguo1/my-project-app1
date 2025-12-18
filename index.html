@@ -1,56 +1,112 @@
-// 1. 数据初始化 (增加了一个简单的 ID 生成器)
-let state = JSON.parse(localStorage.getItem('myProjectData')) || {
-    points: 0,
-    projects: []
-};
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目与打卡系统 - 完整修复版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <style>
+        .project-card { border-left: 4px solid #3b82f6; transition: all 0.2s; }
+        .sub-project { margin-left: 1.5rem; border-left: 1px dashed #cbd5e1; padding-left: 1rem; }
+        .checkin-task { border-left-color: #10b981; bg-color: #f0fdf4; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
 
-// 2. 保存并刷新界面
-function saveData() {
-    localStorage.setItem('myProjectData', JSON.stringify(state));
-    renderList();
-    updatePoints();
-}
+    <div class="container mx-auto max-w-4xl p-4 md:p-8">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-800 tracking-tight">🚀 项目管理系统</h1>
+                <p class="text-slate-500">无限层级 · 自动关联日历 · 积分打卡</p>
+            </div>
+            <div class="flex bg-white rounded-lg shadow-sm border p-1">
+                <button onclick="window.switchView('list')" class="px-4 py-2 rounded-md hover:bg-slate-100 transition">列表模式</button>
+                <button onclick="window.switchView('calendar')" class="px-4 py-2 rounded-md hover:bg-slate-100 transition">日历模式</button>
+            </div>
+        </header>
 
-function updatePoints() {
-    document.getElementById('totalPoints').innerText = state.points;
-}
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-2xl mb-8 shadow-lg text-white">
+            <div class="text-blue-100 text-sm font-medium uppercase tracking-wider">当前个人总积分</div>
+            <div class="text-4xl font-black mt-1"><span id="totalPoints">0</span> <span class="text-2xl font-normal opacity-80">⭐</span></div>
+        </div>
 
-// 3. 【新增】新建总项目功能
-window.addProject = () => {
-    const title = prompt("请输入总项目名称:");
-    if (title) {
-        const newProj = {
-            id: Date.now(), // 使用时间戳作为唯一ID
-            title: title,
-            start: new Date().toISOString().split('T')[0], // 默认今天
-            end: "",
-            type: 'project',
-            children: []
+        <div id="listView" class="space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-bold text-slate-700">项目列表</h2>
+                <button onclick="window.addProject()" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md hover:bg-blue-700 active:scale-95 transition">
+                    + 新建总项目
+                </button>
+            </div>
+            <div id="projectTree" class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 min-h-[200px]">
+                </div>
+        </div>
+
+        <div id="calendarView" class="hidden animate-fadeIn">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="mb-4 text-sm text-slate-500 italic">提示：直接点击日历上的日期可以快速创建项目</div>
+                <div id="calendar"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 数据管理 ---
+        let state = JSON.parse(localStorage.getItem('myProjectApp_v2')) || {
+            points: 0,
+            projects: []
         };
-        state.projects.push(newProj);
-        saveData();
-    }
-};
 
-// 4. 【新增】寻找特定 ID 的项目 (递归算法)
-function findItemById(items, id) {
-    for (let item of items) {
-        if (item.id === id) return item;
-        if (item.children && item.children.length > 0) {
-            let found = findItemById(item.children, id);
-            if (found) return found;
+        function saveData() {
+            localStorage.setItem('myProjectApp_v2', JSON.stringify(state));
+            renderList();
+            updatePoints();
         }
-    }
-    return null;
-}
 
-// 5. 【新增】添加子项功能
-window.addChild = (parentId) => {
-    const parent = findItemById(state.projects, parentId);
-    if (parent) {
-        const title = prompt(`为「${parent.title}」添加子项名称:`);
-        if (title) {
-            const isTask = confirm("这是一个需要打卡的任务吗？\n(确定: 打卡任务, 取消: 普通子项目)");
+        function updatePoints() {
+            const el = document.getElementById('totalPoints');
+            if(el) el.innerText = state.points;
+        }
+
+        // --- 2. 核心逻辑：递归查找项目 ---
+        function findItemById(items, id) {
+            for (let item of items) {
+                if (item.id === id) return item;
+                if (item.children && item.children.length > 0) {
+                    let found = findItemById(item.children, id);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        // --- 3. 交互功能 (强制绑定到 window 对象) ---
+
+        // 新建主项目
+        window.addProject = (defaultDate = null) => {
+            const title = prompt("请输入新项目名称:");
+            if (!title) return;
+            
+            const newProj = {
+                id: Date.now(),
+                title: title,
+                start: defaultDate || new Date().toISOString().split('T')[0],
+                type: 'project',
+                children: []
+            };
+            state.projects.push(newProj);
+            saveData();
+        };
+
+        // 添加子项
+        window.addChild = (parentId) => {
+            const parent = findItemById(state.projects, parentId);
+            if (!parent) return;
+
+            const title = prompt(`为「${parent.title}」添加子项名称:`);
+            if (!title) return;
+
+            const isTask = confirm("这是一个打卡任务吗？\n(确定: 每天打卡领积分, 取消: 普通项目节点)");
             const newChild = {
                 id: Date.now(),
                 title: title,
@@ -58,106 +114,132 @@ window.addChild = (parentId) => {
                 points: isTask ? 10 : 0,
                 children: []
             };
+            
+            if(!parent.children) parent.children = [];
             parent.children.push(newChild);
             saveData();
-        }
-    }
-};
-
-// 6. 打卡功能
-window.doCheckIn = (id) => {
-    const item = findItemById(state.projects, id);
-    if (item) {
-        state.points += (item.points || 5);
-        alert(`打卡成功！获得 ${item.points || 5} 积分。`);
-        saveData();
-    }
-};
-
-// 7. 【新增】删除功能 (新手调试必备)
-window.deleteItem = (id) => {
-    if (confirm("确定要删除这个项目及其所有子项吗？")) {
-        const removeRecursive = (list) => {
-            return list.filter(item => {
-                if (item.id === id) return false;
-                if (item.children) item.children = removeRecursive(item.children);
-                return true;
-            });
         };
-        state.projects = removeRecursive(state.projects);
-        saveData();
-    }
-};
 
-// 8. 渲染列表 (在原有基础上增加了“删除”按钮显示)
-function renderList() {
-    const treeContainer = document.getElementById('projectTree');
-    if (!treeContainer) return;
-    treeContainer.innerHTML = '';
+        // 打卡
+        window.doCheckIn = (id) => {
+            const item = findItemById(state.projects, id);
+            if (item) {
+                state.points += (item.points || 5);
+                alert(`🎉 成功打卡：${item.title}\n积分 +${item.points || 5}`);
+                saveData();
+            }
+        };
 
-    if (state.projects.length === 0) {
-        treeContainer.innerHTML = '<p class="text-gray-400 text-center py-4">还没有项目，点击上方按钮开始吧！</p>';
-    }
+        // 删除
+        window.deleteItem = (id) => {
+            if (confirm("确定要彻底删除该项目及其所有子项吗？此操作不可撤销。")) {
+                const filterList = (list) => {
+                    return list.filter(item => {
+                        if (item.id === id) return false;
+                        if (item.children) item.children = filterList(item.children);
+                        return true;
+                    });
+                };
+                state.projects = filterList(state.projects);
+                saveData();
+            }
+        };
 
-    const createNode = (item, depth = 0) => {
-        const div = document.createElement('div');
-        div.className = `p-3 my-2 ${depth > 0 ? 'sub-project' : 'project-card bg-gray-50 rounded shadow-sm'}`;
-        
-        let actionBtn = '';
-        if(item.type === 'checkin') {
-            actionBtn = `<button onclick="doCheckIn(${item.id})" class="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">打卡</button>`;
+        // --- 4. 界面渲染 ---
+
+        function renderList() {
+            const container = document.getElementById('projectTree');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (state.projects.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-400">
+                        <p class="text-lg">暂无项目</p>
+                        <p class="text-sm">点击右上角“新建总项目”按钮开始吧！</p>
+                    </div>`;
+                return;
+            }
+
+            const createHTML = (item, depth = 0) => {
+                const node = document.createElement('div');
+                node.className = `p-4 my-2 rounded-xl border ${depth > 0 ? 'sub-project bg-white' : 'project-card bg-slate-50 shadow-sm'}`;
+                if(item.type === 'checkin') node.classList.add('checkin-task', 'bg-emerald-50/30', 'border-emerald-100');
+
+                const btnCheckIn = item.type === 'checkin' 
+                    ? `<button onclick="window.doCheckIn(${item.id})" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-emerald-600 transition">打卡</button>` 
+                    : '';
+
+                node.innerHTML = `
+                    <div class="flex justify-between items-center group">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-700">${item.title}</span>
+                            ${item.start ? `<span class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">${item.start}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                            ${btnCheckIn}
+                            <button onclick="window.addChild(${item.id})" class="text-blue-500 text-xs font-semibold hover:text-blue-700">添加子项</button>
+                            <button onclick="window.deleteItem(${item.id})" class="text-rose-400 hover:text-rose-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                if (item.children && item.children.length > 0) {
+                    item.children.forEach(child => node.appendChild(createHTML(child, depth + 1)));
+                }
+                return node;
+            };
+
+            state.projects.forEach(p => container.appendChild(createHTML(p)));
         }
 
-        div.innerHTML = `
-            <div class="flex justify-between items-center px-2">
-                <div class="flex-1">
-                    <span class="font-medium ${item.type === 'checkin' ? 'text-green-700' : 'text-gray-800'}">${item.title}</span>
-                    <span class="text-xs text-gray-400 ml-2">${item.start || ''}</span>
-                </div>
-                <div class="flex space-x-2">
-                    ${actionBtn}
-                    <button onclick="addChild(${item.id})" class="text-blue-500 text-xs hover:underline">+子项</button>
-                    <button onclick="deleteItem(${item.id})" class="text-red-400 text-xs hover:text-red-600">删除</button>
-                </div>
-            </div>
-        `;
-        
-        if (item.children) {
-            item.children.forEach(child => div.appendChild(createNode(child, depth + 1)));
+        // --- 5. 视图切换与日历初始化 ---
+
+        window.switchView = (view) => {
+            document.getElementById('listView').classList.toggle('hidden', view !== 'list');
+            document.getElementById('calendarView').classList.toggle('hidden', view !== 'calendar');
+            if(view === 'calendar') renderCalendar();
+        };
+
+        let calendarObj = null;
+        function renderCalendar() {
+            const calendarEl = document.getElementById('calendar');
+            const events = [];
+            const extract = (list) => {
+                list.forEach(p => {
+                    if (p.start) events.push({ 
+                        title: (p.type === 'checkin' ? '📌 ' : '📁 ') + p.title, 
+                        start: p.start, 
+                        backgroundColor: p.type === 'checkin' ? '#10b981' : '#3b82f6',
+                        borderColor: 'transparent'
+                    });
+                    if (p.children) extract(p.children);
+                });
+            };
+            extract(state.projects);
+            
+            if(calendarObj) calendarObj.destroy();
+            
+            calendarObj = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'zh-cn',
+                events: events,
+                headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+                // 解决点击日历添加项目的问题
+                dateClick: function(info) {
+                    if(confirm(`要在 ${info.dateStr} 这一天新建项目吗？`)) {
+                        window.addProject(info.dateStr);
+                    }
+                }
+            });
+            calendarObj.render();
         }
-        return div;
-    };
 
-    state.projects.forEach(p => treeContainer.appendChild(createNode(p)));
-}
-
-// 9. 视图切换与日历
-window.switchView = (view) => {
-    document.getElementById('listView').classList.toggle('hidden', view !== 'list');
-    document.getElementById('calendarView').classList.toggle('hidden', view !== 'calendar');
-    if(view === 'calendar') renderCalendar();
-};
-
-function renderCalendar() {
-    const calendarEl = document.getElementById('calendar');
-    // 扁平化所有带日期的项目用于显示
-    const events = [];
-    const extractEvents = (list) => {
-        list.forEach(p => {
-            if (p.start) events.push({ title: p.title, start: p.start, color: p.type === 'checkin' ? '#10b981' : '#3b82f6' });
-            if (p.children) extractEvents(p.children);
-        });
-    };
-    extractEvents(state.projects);
-    
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        events: events,
-        locale: 'zh-cn'
-    });
-    calendar.render();
-}
-
-// 初始运行
-renderList();
-updatePoints();
+        // 初始化运行
+        document.addEventListener('DOMContentLoaded', () => {
+            renderList();
+            updatePoints();
