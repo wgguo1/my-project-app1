@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的项目与打卡管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <style>
+        .project-card { border-left: 4px solid #3b82f6; }
+        .sub-project { margin-left: 2rem; border-left: 2px dashed #cbd5e1; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-blue-600">🚀 项目进度管理</h1>
+            <div class="space-x-2">
+                <button onclick="switchView('list')" class="px-4 py-2 bg-white border rounded shadow-sm hover:bg-gray-100">列表模式</button>
+                <button onclick="switchView('calendar')" class="px-4 py-2 bg-white border rounded shadow-sm hover:bg-gray-100">日历/时间轴</button>
+            </div>
+        </header>
+
+        <div class="bg-blue-50 p-4 rounded-lg mb-6 flex items-center shadow-inner">
+            <span class="text-lg font-semibold text-blue-700">当前总积分：<span id="totalPoints">0</span> ⭐</span>
+        </div>
+
+        <div id="listView" class="space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-semibold">项目树状结构</h2>
+                <button onclick="addProject()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">+ 新建总项目</button>
+            </div>
+            <div id="projectTree" class="bg-white p-6 rounded-xl shadow">
+                </div>
+        </div>
+
+        <div id="calendarView" class="hidden bg-white p-6 rounded-xl shadow">
+            <div id="calendar"></div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 数据结构：初始化一些演示数据
+        let state = JSON.parse(localStorage.getItem('myProjectData')) || {
+            points: 0,
+            projects: [
+                {
+                    id: 1,
+                    title: "学习前端开发",
+                    start: "2023-12-01",
+                    end: "2023-12-31",
+                    children: [
+                        { id: 2, title: "HTML基础", type: 'task', points: 10, done: false },
+                        { id: 3, title: "每日背单词", type: 'checkin', frequency: 'daily', points: 5, history: [] }
+                    ]
+                }
+            ]
+        };
+
+        // 2. 保存数据
+        function saveData() {
+            localStorage.setItem('myProjectData', JSON.stringify(state));
+            renderList();
+            updatePoints();
+        }
+
+        function updatePoints() {
+            document.getElementById('totalPoints').innerText = state.points;
+        }
+
+        // 3. 渲染列表视图 (递归显示子项目)
+        function renderList() {
+            const treeContainer = document.getElementById('projectTree');
+            treeContainer.innerHTML = '';
+
+            const createNode = (item, depth = 0) => {
+                const div = document.createElement('div');
+                div.className = `p-3 my-2 ${depth > 0 ? 'sub-project' : 'project-card bg-gray-50 rounded'}`;
+                
+                let actionBtn = '';
+                if(item.type === 'checkin') {
+                    actionBtn = `<button onclick="doCheckIn(${item.id})" class="ml-4 text-sm bg-green-500 text-white px-2 py-1 rounded">打卡 (+${item.points})</button>`;
+                }
+
+                div.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="font-medium">${item.title}</span>
+                            <span class="text-xs text-gray-500 ml-2">${item.start || ''}</span>
+                        </div>
+                        <div>
+                            ${actionBtn}
+                            <button onclick="addChild(${item.id})" class="text-blue-500 text-sm ml-2">+ 子项</button>
+                        </div>
+                    </div>
+                `;
+                
+                if (item.children) {
+                    item.children.forEach(child => div.appendChild(createNode(child, depth + 1)));
+                }
+                return div;
+            };
+
+            state.projects.forEach(p => treeContainer.appendChild(createNode(p)));
+        }
+
+        // 4. 打卡功能
+        window.doCheckIn = (id) => {
+            state.points += 5; // 简化处理
+            alert("打卡成功！积分已增加。");
+            saveData();
+        };
+
+        // 5. 视图切换
+        window.switchView = (view) => {
+            document.getElementById('listView').classList.toggle('hidden', view !== 'list');
+            document.getElementById('calendarView').classList.toggle('hidden', view !== 'calendar');
+            if(view === 'calendar') renderCalendar();
+        };
+
+        // 6. 日历渲染
+        function renderCalendar() {
+            const calendarEl = document.getElementById('calendar');
+            const events = state.projects.map(p => ({ title: p.title, start: p.start, end: p.end }));
+            
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                events: events,
+                locale: 'zh-cn'
+            });
+            calendar.render();
+        }
+
+        // 初始化
+        renderList();
+        updatePoints();
+    </script>
+</body>
+</html>
